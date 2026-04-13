@@ -1,0 +1,88 @@
+name: Patch & Sign CMH APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get install -y zipalign apksigner curl jq
+
+      - name: Get Gofile guest token
+        run: |
+          TOKEN=$(curl -s https://api.gofile.io/accounts/guest | jq -r '.data.token')
+          echo "GOFILE_TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "Got guest token"
+
+      - name: Download APK from Gofile
+        run: |
+          CONTENT=$(curl -s "https://api.gofile.io/contents/88dMRx?token=$GOFILE_TOKEN")
+          echo "$CONTENT" | jq .
+          DOWNLOAD_URL=$(echo "$CONTENT" | jq -r '.data.children | to_entries[0].value.link')
+          echo "Downloading from: $DOWNLOAD_URL"
+          curl -L -o "game.apk" \
+            -H "Cookie: accountToken=$GOFILE_TOKEN" \
+            "$DOWNLOAD_URL"
+          ls -lh game.apk
+
+      - name: Swap patched DLL
+        run: |
+          mkdir -p unpacked
+          unzip -q game.apk -d unpacked
+          cp Assembly-CSharp.dll unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
+          echo "DLL swapped:"
+          ls -lh unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
+
+      - name: Repack APK
+        run: |
+          cd unpacked
+          zip -q -r ../repacked.apk .
+          cd ..
+          ls -lh repacked.apk
+
+      - name: Zipalign
+        run: |
+          zipalign -v -p 4 repacked.apk aligned.apk
+
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore release.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias mykey \
+            -dname "CN=CMH, OU=Mod, O=Mod, L=City, S=State, C=US" \
+            -storepass android \
+            -keypass android
+
+      - name: Sign APK
+        run: |
+          apksigner sign \
+            --ks release.jks \
+            --ks-key-alias mykey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --out CMH-modded.apk \
+            aligned.apk
+
+      - name: Verify
+        run: |
+          apksigner verify --verbose CMH-modded.apk
+          ls -lh CMH-modded.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CMH-modded
+          path: CMH-modded.apk
+          retention-days: 7
