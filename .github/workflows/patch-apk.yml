@@ -1,0 +1,85 @@
+name: Patch & Sign CMH APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_filename:
+        description: 'APK filename in repo root (e.g. game.apk)'
+        required: true
+        default: 'game.apk'
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get install -y zipalign apksigner
+
+      - name: Download patched DLL
+        run: |
+          # The patched DLL is committed to the repo as Assembly-CSharp.dll
+          ls -la Assembly-CSharp.dll
+          echo "Patched DLL ready"
+
+      - name: Unpack APK
+        run: |
+          mkdir -p apk_extracted
+          cp "${{ github.event.inputs.apk_filename }}" apk_extracted/original.apk
+          cd apk_extracted
+          unzip -q original.apk -d unpacked
+
+      - name: Swap DLL
+        run: |
+          cp Assembly-CSharp.dll apk_extracted/unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
+          echo "DLL swapped"
+          ls -la apk_extracted/unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
+
+      - name: Repack APK
+        run: |
+          cd apk_extracted/unpacked
+          zip -q -r ../repacked.apk . 
+          cd ..
+
+      - name: Zipalign
+        run: |
+          zipalign -v -p 4 apk_extracted/repacked.apk apk_extracted/aligned.apk
+
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore my-release-key.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias mykey \
+            -dname "CN=CMH, OU=Mod, O=Mod, L=City, S=State, C=US" \
+            -storepass android \
+            -keypass android
+
+      - name: Sign APK
+        run: |
+          apksigner sign \
+            --ks my-release-key.jks \
+            --ks-key-alias mykey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --out apk_extracted/CMH-modded-signed.apk \
+            apk_extracted/aligned.apk
+
+      - name: Verify signature
+        run: |
+          apksigner verify --verbose apk_extracted/CMH-modded-signed.apk
+
+      - name: Upload modded APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CMH-modded-signed
+          path: apk_extracted/CMH-modded-signed.apk
+          retention-days: 7
