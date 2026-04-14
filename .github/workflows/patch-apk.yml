@@ -12,18 +12,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install tools
-        run: |
-          sudo apt-get install -y zipalign apksigner curl jq
+        run: sudo apt-get install -y zipalign apksigner curl
 
-      - name: Download APK from Gofile
+      - name: Download APK from Pixeldrain
         run: |
-          TOKEN=$(curl -s -X POST "https://api.gofile.io/accounts" | jq -r '.data.token')
-          echo "Token: ${TOKEN:0:8}..."
-          CONTENT=$(curl -s "https://api.gofile.io/contents/88dMRx?token=$TOKEN&cache=true")
-          echo "$CONTENT" | jq .
-          DOWNLOAD_URL=$(echo "$CONTENT" | jq -r '[.data.children[] | select(.type=="file")][0].link')
-          echo "URL: $DOWNLOAD_URL"
-          curl -L -o "game.apk" -H "Cookie: accountToken=$TOKEN" "$DOWNLOAD_URL"
+          curl -L -o game.apk "https://pixeldrain.com/api/file/nEZJSGy4?download"
           ls -lh game.apk
 
       - name: Swap patched DLL
@@ -31,6 +24,7 @@ jobs:
           mkdir -p unpacked
           unzip -q game.apk -d unpacked
           cp Assembly-CSharp.dll unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
+          echo "DLL swapped:"
           ls -lh unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
 
       - name: Repack APK
@@ -55,7 +49,7 @@ jobs:
             --v1-signing-enabled true --v2-signing-enabled true \
             --out CMH-modded.apk aligned.apk
 
-      - name: Verify and upload
+      - name: Verify
         run: |
           apksigner verify --verbose CMH-modded.apk
           ls -lh CMH-modded.apk
