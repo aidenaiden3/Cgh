@@ -1,6 +1,65 @@
 name: Patch & Sign CMH APK
 
+on:name: Patch and Sign CMH APK
+
 on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get install -y zipalign apksigner curl
+
+      - name: Download APK from Pixeldrain
+        run: |
+          curl -L -o game.apk "https://pixeldrain.com/api/file/nEZJSGy4?download"
+          ls -lh game.apk
+
+      - name: Download apktool
+        run: wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar -O apktool.jar
+
+      - name: Decode APK
+        run: java -jar apktool.jar d game.apk -o decoded --no-src -f
+
+      - name: Fix package name in manifest
+        run: |
+          sed -i "s|com.valergames.chaosmemeshorror|com.UnityTechnolgies.com.unity.template.urpblank|g" decoded/AndroidManifest.xml
+          grep package decoded/AndroidManifest.xml | head -3
+
+      - name: Swap patched DLL
+        run: |
+          cp Assembly-CSharp.dll decoded/assets/bin/Data/Managed/Assembly-CSharp.dll
+          ls -lh decoded/assets/bin/Data/Managed/Assembly-CSharp.dll
+
+      - name: Rebuild APK
+        run: java -jar apktool.jar b decoded -o repacked.apk
+
+      - name: Zipalign
+        run: zipalign -v -p 4 repacked.apk aligned.apk
+
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048             -validity 10000 -alias mykey             -dname "CN=CMH, OU=Mod, O=Mod, L=City, S=State, C=US"             -storepass android -keypass android
+
+      - name: Sign APK
+        run: |
+          apksigner sign --ks release.jks --ks-key-alias mykey             --ks-pass pass:android --key-pass pass:android             --v1-signing-enabled true --v2-signing-enabled true             --out CMH-modded.apk aligned.apk
+
+      - name: Verify
+        run: apksigner verify --verbose CMH-modded.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CMH-modded
+          path: CMH-modded.apk
+          retention-days: 7
+
   workflow_dispatch:
 
 jobs:name: Patch & Sign CMH APK
