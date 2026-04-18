@@ -1,6 +1,4 @@
-name: Patch & Sign CMH APK
-
-on:name: Patch and Sign CMH APK
+name: Patch and Sign CMH APK
 
 on:
   workflow_dispatch:
@@ -17,7 +15,7 @@ jobs:
 
       - name: Download APK from Pixeldrain
         run: |
-          curl -L -o game.apk "https://pixeldrain.com/api/file/nEZJSGy4?download"
+          curl -L -o game.apk "https://pixeldrain.com/api/file/6dGr3f2G?download"
           ls -lh game.apk
 
       - name: Download apktool
@@ -25,6 +23,21 @@ jobs:
 
       - name: Decode APK
         run: java -jar apktool.jar d game.apk -o decoded --no-src -f
+
+      - name: Show package name
+        run: grep package decoded/AndroidManifest.xml | head -3
+
+      - name: Extract Assembly-CSharp.dll
+        run: |
+          cp decoded/assets/bin/Data/Managed/Assembly-CSharp.dll ./Assembly-CSharp-extracted.dll
+          ls -lh Assembly-CSharp-extracted.dll
+
+      - name: Upload extracted DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: Assembly-CSharp-extracted
+          path: Assembly-CSharp-extracted.dll
+          retention-days: 7
 
       - name: Fix package name in manifest
         run: |
@@ -52,143 +65,6 @@ jobs:
 
       - name: Verify
         run: apksigner verify --verbose CMH-modded.apk
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CMH-modded
-          path: CMH-modded.apk
-          retention-days: 7
-
-  workflow_dispatch:
-
-jobs:name: Patch & Sign CMH APK
-
-on:
-  workflow_dispatch:
-
-jobs:
-  patch:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Install tools
-        run: |
-          sudo apt-get install -y zipalign apksigner curl python3
-          pip install androguard --break-system-packages -q
-
-      - name: Download APK from Pixeldrain
-        run: |
-          curl -L -o game.apk "https://pixeldrain.com/api/file/nEZJSGy4?download"
-          ls -lh game.apk
-
-      - name: Decode APK with apktool
-        run: |
-          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar -O apktool.jar
-          java -jar apktool.jar d game.apk -o decoded --no-src -f
-          echo "Decoded APK"
-          cat decoded/AndroidManifest.xml | head -5
-
-      - name: Fix package name in manifest
-        run: |
-          OLD_PKG="com.valergames.chaosmemeshorror"
-          NEW_PKG="com.UnityTechnolgies.com.unity.template.urpblank"
-          sed -i "s|$OLD_PKG|$NEW_PKG|g" decoded/AndroidManifest.xml
-          echo "Updated manifest:"
-          grep "package" decoded/AndroidManifest.xml | head -3
-
-      - name: Swap patched DLL
-        run: |
-          cp Assembly-CSharp.dll "decoded/assets/bin/Data/Managed/Assembly-CSharp.dll"
-          echo "DLL swapped"
-          ls -lh "decoded/assets/bin/Data/Managed/Assembly-CSharp.dll"
-
-      - name: Rebuild APK with apktool
-        run: |
-          java -jar apktool.jar b decoded -o repacked.apk
-          ls -lh repacked.apk
-
-      - name: Zipalign
-        run: zipalign -v -p 4 repacked.apk aligned.apk
-
-      - name: Generate keystore
-        run: |
-          keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 \
-            -validity 10000 -alias mykey \
-            -dname "CN=CMH, OU=Mod, O=Mod, L=City, S=State, C=US" \
-            -storepass android -keypass android
-
-      - name: Sign APK
-        run: |
-          apksigner sign --ks release.jks --ks-key-alias mykey \
-            --ks-pass pass:android --key-pass pass:android \
-            --v1-signing-enabled true --v2-signing-enabled true \
-            --out CMH-modded.apk aligned.apk
-
-      - name: Verify
-        run: |
-          apksigner verify --verbose CMH-modded.apk
-          ls -lh CMH-modded.apk
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CMH-modded
-          path: CMH-modded.apk
-          retention-days: 7
-
-  patch:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Install tools
-        run: sudo apt-get install -y zipalign apksigner curl
-
-      - name: Download APK from Pixeldrain
-        run: |
-          curl -L -o game.apk "https://pixeldrain.com/api/file/nEZJSGy4?download"
-          ls -lh game.apk
-
-      - name: Swap patched DLL
-        run: |
-          mkdir -p unpacked
-          unzip -q game.apk -d unpacked
-          cp Assembly-CSharp.dll unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
-          echo "DLL swapped:"
-          ls -lh unpacked/assets/bin/Data/Managed/Assembly-CSharp.dll
-
-      - name: Repack APK
-        run: |
-          cd unpacked && zip -q -r ../repacked.apk . && cd ..
-          ls -lh repacked.apk
-
-      - name: Zipalign
-        run: zipalign -v -p 4 repacked.apk aligned.apk
-
-      - name: Generate keystore
-        run: |
-          keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 \
-            -validity 10000 -alias mykey \
-            -dname "CN=CMH, OU=Mod, O=Mod, L=City, S=State, C=US" \
-            -storepass android -keypass android
-
-      - name: Sign APK
-        run: |
-          apksigner sign --ks release.jks --ks-key-alias mykey \
-            --ks-pass pass:android --key-pass pass:android \
-            --v1-signing-enabled true --v2-signing-enabled true \
-            --out CMH-modded.apk aligned.apk
-
-      - name: Verify
-        run: |
-          apksigner verify --verbose CMH-modded.apk
-          ls -lh CMH-modded.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
